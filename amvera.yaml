@@ -1,3 +1,11 @@
-version: 1
-service: python
-run: python bot.py
+meta:
+  environment: python
+  toolchain:
+    name: pip
+    version: 3.8
+build:
+  requirementsPath: requirements.txt
+run:
+  scriptName: main.py
+  persistenceMount: /data
+  containerPort: 80
