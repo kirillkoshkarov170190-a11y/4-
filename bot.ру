@@ -441,25 +441,30 @@ async def handle_ai_conversation(update: Update, context: ContextTypes.DEFAULT_T
     await msg.reply_text(f"🤖 {response}")
     record_ai_message(user_id, ai_id, True, response)
     conn.close()
-    # ==================== ОСНОВНЫЕ ОБРАБОТЧИКИ ====================
+
+# ==================== ОСНОВНЫЕ ОБРАБОТЧИКИ ====================
 async def start(update, context):
     user_id = update.effective_user.id
     args = context.args
     if args and args[0].startswith("ref"):
         try:
-            ref_part = args[0][3:]
-            referrer_id_str, _ = ref_part.split("_")
-            referrer_id = int(referrer_id_str)
-            if referrer_id != user_id:
-                conn = sqlite3.connect("dating_bot.db")
-                c = conn.cursor()
-                c.execute("SELECT referrer_id FROM referrals WHERE referred_id=?", (user_id,))
-                if not c.fetchone():
-                    c.execute("INSERT OR IGNORE INTO referrals (referrer_id, referred_id, date) VALUES (?, ?, ?)",
-                              (referrer_id, user_id, datetime.now().strftime("%Y-%m-%d %H:%M")))
-                conn.commit()
-                conn.close()
-        except: pass
+            ref_part = args[0][3:]  # убираем "ref"
+            # Разбиваем по первому подчёркиванию, чтобы гарантированно получить 2 части
+            parts = ref_part.split("_", 1)
+            if len(parts) == 2:
+                referrer_id_str = parts[0]
+                referrer_id = int(referrer_id_str)
+                if referrer_id != user_id:
+                    conn = sqlite3.connect("dating_bot.db")
+                    c = conn.cursor()
+                    c.execute("SELECT referrer_id FROM referrals WHERE referred_id=?", (user_id,))
+                    if not c.fetchone():
+                        c.execute("INSERT OR IGNORE INTO referrals (referrer_id, referred_id, date) VALUES (?, ?, ?)",
+                                  (referrer_id, user_id, datetime.now().strftime("%Y-%m-%d %H:%M")))
+                    conn.commit()
+                    conn.close()
+        except Exception:
+            pass  # игнорируем любые ошибки при разборе реферальной ссылки
     if is_banned(user_id):
         await update.message.reply_text("⛔ Вы заблокированы. /appeal")
         return
