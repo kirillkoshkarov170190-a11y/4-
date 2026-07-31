@@ -1,0 +1,3 @@
+service: python
+run: python bot.py
+build: pip install -r requirements.txt
