@@ -21,7 +21,7 @@ ADMIN_CHAT_ID = None  # ваш Telegram ID
  DISLIKED_BOOKS, BOOK_REASON,
  CITY, ENERGY_PLACE, HATE_PLACE, WANT_PLACE,
  MICRO_Q1, MICRO_Q2, MICRO_Q3,
- APPEAL_TEXT) = range(19)
+ APPEAL_TEXT) = range(18)
 
 FORBIDDEN_KEYWORDS = [
     "убью", "взорвать", "теракт", "насилие", "оружие", "бомба",
