@@ -1171,7 +1171,7 @@ def main():
     scheduler.add_job(manage_all_ai, 'interval', hours=1)
     scheduler.add_job(lambda: ai_like_random_users(app), 'interval', hours=1)
     scheduler.start()
-    asyncio.ensure_future(generate_ai_avatars(app))
+    # asyncio.ensure_future(generate_ai_avatars(app))
 
     conv_handler = ConversationHandler(
         entry_points=[CallbackQueryHandler(choose_mode, pattern="^mode_")],
