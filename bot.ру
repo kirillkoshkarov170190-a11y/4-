@@ -1,4 +1,4 @@
-import os, logging, sqlite3, hashlib, random, io, asyncio
+import os, logging, sqlite3, hashlib, random, asyncio
 from datetime import datetime, date, timedelta
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import (
@@ -6,23 +6,21 @@ from telegram.ext import (
     ConversationHandler, ContextTypes, filters, PreCheckoutQueryHandler
 )
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-# from PIL import Image, ImageDraw, ImageFont
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
-BOT_USERNAME = "WeirdMeetBot"  # без @
-ADMIN_CHAT_ID = None  # ваш Telegram ID
+BOT_USERNAME = "ВАШ_ЮЗЕРНЕЙМ_БОТА"  # без @
 
-# Состояния
+# ---------- Состояния ----------
 (CHOOSE_MODE, BIRTH_DATE, GENDER, PHONE_VERIFY, CITY_SELF,
  STRANGE_HABIT, FAVORITE_MEME, SECRET_ACTION,
  DISLIKED_BOOKS, BOOK_REASON,
  CITY, ENERGY_PLACE, HATE_PLACE, WANT_PLACE,
  MICRO_Q1, MICRO_Q2, MICRO_Q3,
- APPEAL_TEXT) = range(18)
+ APPEAL_TEXT) = range(19)
 
+# ---------- Фильтры ----------
 FORBIDDEN_KEYWORDS = [
     "убью", "взорвать", "теракт", "насилие", "оружие", "бомба",
     "нацист", "фашист", "свастика", "расизм", "наркотик", "спайс",
@@ -38,6 +36,7 @@ def is_safe_text(text):
 
 def has_terrorism(text): return any(w in text.lower() for w in TERRORISM_KEYWORDS)
 
+# ---------- База данных ----------
 def init_db():
     conn = sqlite3.connect("dating_bot.db")
     c = conn.cursor()
@@ -63,12 +62,10 @@ def init_db():
     c.execute("""CREATE TABLE IF NOT EXISTS referrals (referrer_id INTEGER, referred_id INTEGER PRIMARY KEY, date TEXT, bonus_given INTEGER DEFAULT 0)""")
     c.execute("""CREATE TABLE IF NOT EXISTS ai_profiles (
         user_id INTEGER PRIMARY KEY, mode TEXT, name TEXT,
-        active INTEGER DEFAULT 1, gender TEXT, avatar_file_id TEXT)""")
+        active INTEGER DEFAULT 1, gender TEXT)""")
     c.execute("""CREATE TABLE IF NOT EXISTS ai_actions (
         id INTEGER PRIMARY KEY AUTOINCREMENT, actor_id INTEGER, target_id INTEGER,
         action TEXT, timestamp TEXT)""")
-    c.execute("""CREATE TABLE IF NOT EXISTS ai_avatars (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, gender TEXT, file_id TEXT UNIQUE)""")
     c.execute("""CREATE TABLE IF NOT EXISTS ai_conversations (
         id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, ai_id INTEGER,
         message_text TEXT, from_ai INTEGER DEFAULT 0, timestamp TEXT)""")
@@ -80,6 +77,7 @@ def init_db():
 
 init_db()
 
+# ---------- AI настройки ----------
 AI_START_RANGE = 200000
 MIN_PROFILES_PER_MODE = {"weird": 100, "books": 100, "city": 100, "micro": 100}
 
@@ -97,6 +95,7 @@ AI_ENERGY_PLACES = ["Парк Горького","Красная площадь"]
 AI_HATE_PLACES = ["Пробки на ТТК","Станция метро Выхино"]
 AI_WANT_PLACES = ["Смотровая площадка Москва-Сити","Эрмитаж"]
 
+# ---------- Служебные функции ----------
 def count_active_profiles():
     conn = sqlite3.connect("dating_bot.db")
     c = conn.cursor()
@@ -216,6 +215,7 @@ async def process_referral_bonus(user_id, context):
             except: pass
     conn.close()
 
+# ==================== AI-функции (без аватарок) ====================
 def get_available_ai_name(mode, gender):
     conn = sqlite3.connect("dating_bot.db")
     c = conn.cursor()
@@ -230,9 +230,6 @@ def get_available_ai_name(mode, gender):
 def create_single_ai(c, mode, gender=None):
     if gender is None: gender = random.choice(["male", "female"])
     name = get_available_ai_name(mode, gender)
-    c.execute("SELECT file_id FROM ai_avatars WHERE gender=? ORDER BY RANDOM() LIMIT 1", (gender,))
-    row = c.fetchone()
-    avatar_file_id = row[0] if row else None
     c.execute("SELECT MAX(user_id) FROM ai_profiles")
     max_id = c.fetchone()[0]
     new_id = max(AI_START_RANGE, (max_id or AI_START_RANGE) + 1)
@@ -260,8 +257,8 @@ def create_single_ai(c, mode, gender=None):
         else:
             answers = random.choice([["evening","tea","sea"], ["morning","coffee","mountains"]])
         c.execute("INSERT OR IGNORE INTO micro_profiles VALUES (?,?,?,?)", (new_id, answers[0], answers[1], answers[2]))
-    c.execute("INSERT OR IGNORE INTO ai_profiles (user_id, mode, name, active, gender, avatar_file_id) VALUES (?,?,?,1,?,?)",
-              (new_id, mode, name, gender, avatar_file_id))
+    c.execute("INSERT OR IGNORE INTO ai_profiles (user_id, mode, name, active, gender) VALUES (?,?,?,1,?)",
+              (new_id, mode, name, gender))
 
 def count_real_users_in_mode(mode):
     conn = sqlite3.connect("dating_bot.db")
@@ -302,34 +299,7 @@ def manage_ai_for_mode(mode):
 def manage_all_ai():
     for mode in MIN_PROFILES_PER_MODE: manage_ai_for_mode(mode)
 
-async def generate_ai_avatars(app: Application):
-    if not ADMIN_CHAT_ID: return
-    conn = sqlite3.connect("dating_bot.db")
-    c = conn.cursor()
-    c.execute("SELECT COUNT(*) FROM ai_avatars")
-    if c.fetchone()[0] >= 800:
-        conn.close()
-        return
-    c.execute("DELETE FROM ai_avatars")
-    conn.commit()
-    bot = app.bot
-    admin = ADMIN_CHAT_ID
-    for i in range(400):
-        img = Image.new('RGB', (200,200), (70,130,180))
-        d = ImageDraw.Draw(img)
-        d.text((100,70), chr(ord('А')+(i%32)), fill="white", anchor="mt", font=ImageFont.load_default())
-        bio = io.BytesIO(); img.save(bio,'PNG'); bio.seek(0)
-        msg = await bot.send_photo(admin, bio)
-        c.execute("INSERT INTO ai_avatars (gender, file_id) VALUES ('male', ?)", (msg.photo[-1].file_id,))
-        img = Image.new('RGB', (200,200), (220,100,150))
-        d = ImageDraw.Draw(img)
-        d.text((100,70), chr(ord('А')+(i%32)), fill="white", anchor="mt", font=ImageFont.load_default())
-        bio = io.BytesIO(); img.save(bio,'PNG'); bio.seek(0)
-        msg = await bot.send_photo(admin, bio)
-        c.execute("INSERT INTO ai_avatars (gender, file_id) VALUES ('female', ?)", (msg.photo[-1].file_id,))
-    conn.commit()
-    conn.close()
-
+# Диалоги AI
 AI_DIALOG_TEMPLATES = {
     "weird": {
         "greeting": ["Привет! Давно искал кого-то с причудами. Расскажи, какая у тебя самая странная привычка? 😄"],
@@ -448,23 +418,19 @@ async def start(update, context):
     args = context.args
     if args and args[0].startswith("ref"):
         try:
-            ref_part = args[0][3:]  # убираем "ref"
-            # Разбиваем по первому подчёркиванию, чтобы гарантированно получить 2 части
-            parts = ref_part.split("_", 1)
-            if len(parts) == 2:
-                referrer_id_str = parts[0]
-                referrer_id = int(referrer_id_str)
-                if referrer_id != user_id:
-                    conn = sqlite3.connect("dating_bot.db")
-                    c = conn.cursor()
-                    c.execute("SELECT referrer_id FROM referrals WHERE referred_id=?", (user_id,))
-                    if not c.fetchone():
-                        c.execute("INSERT OR IGNORE INTO referrals (referrer_id, referred_id, date) VALUES (?, ?, ?)",
-                                  (referrer_id, user_id, datetime.now().strftime("%Y-%m-%d %H:%M")))
-                    conn.commit()
-                    conn.close()
-        except Exception:
-            pass  # игнорируем любые ошибки при разборе реферальной ссылки
+            ref_part = args[0][3:]
+            referrer_id_str, _ = ref_part.split("_")
+            referrer_id = int(referrer_id_str)
+            if referrer_id != user_id:
+                conn = sqlite3.connect("dating_bot.db")
+                c = conn.cursor()
+                c.execute("SELECT referrer_id FROM referrals WHERE referred_id=?", (user_id,))
+                if not c.fetchone():
+                    c.execute("INSERT OR IGNORE INTO referrals (referrer_id, referred_id, date) VALUES (?, ?, ?)",
+                              (referrer_id, user_id, datetime.now().strftime("%Y-%m-%d %H:%M")))
+                conn.commit()
+                conn.close()
+        except: pass
     if is_banned(user_id):
         await update.message.reply_text("⛔ Вы заблокированы. /appeal")
         return
@@ -596,18 +562,22 @@ async def get_strange_habit(update, context):
     safe, words = is_safe_text(text)
     log_message(update.effective_user.id, update.effective_chat.id, text, not safe, ", ".join(words))
     if not safe:
-        if has_terrorism(text) and ADMIN_CHAT_ID: await context.bot.send_message(ADMIN_CHAT_ID, f"🚨 Терроризм от {update.effective_user.id}:\n{text[:200]}")
+        if has_terrorism(text) and (await get_admin_id()): await context.bot.send_message(await get_admin_id(), f"🚨 Терроризм от {update.effective_user.id}:\n{text[:200]}")
         await update.message.reply_text("❌ Запрещённые слова."); return STRANGE_HABIT
     context.user_data["strange_habit"] = text
     await update.message.reply_text("🔥 Любимый мем?")
     return FAVORITE_MEME
+
+async def get_admin_id():
+    admin = os.environ.get("ADMIN_CHAT_ID")
+    return int(admin) if admin else None
 
 async def get_favorite_meme(update, context):
     text = update.message.text.strip()
     safe, words = is_safe_text(text)
     log_message(update.effective_user.id, update.effective_chat.id, text, not safe, ", ".join(words))
     if not safe:
-        if has_terrorism(text) and ADMIN_CHAT_ID: await context.bot.send_message(ADMIN_CHAT_ID, f"🚨 Терроризм от {update.effective_user.id}:\n{text[:200]}")
+        if has_terrorism(text) and (await get_admin_id()): await context.bot.send_message(await get_admin_id(), f"🚨 Терроризм от {update.effective_user.id}:\n{text[:200]}")
         await update.message.reply_text("❌ Недопустимый мем."); return FAVORITE_MEME
     context.user_data["favorite_meme"] = text
     await update.message.reply_text("🤫 Что делаете, когда никто не видит?")
@@ -618,7 +588,7 @@ async def get_secret_action(update, context):
     safe, words = is_safe_text(text)
     log_message(update.effective_user.id, update.effective_chat.id, text, not safe, ", ".join(words))
     if not safe:
-        if has_terrorism(text) and ADMIN_CHAT_ID: await context.bot.send_message(ADMIN_CHAT_ID, f"🚨 Терроризм от {update.effective_user.id}:\n{text[:200]}")
+        if has_terrorism(text) and (await get_admin_id()): await context.bot.send_message(await get_admin_id(), f"🚨 Терроризм от {update.effective_user.id}:\n{text[:200]}")
         await update.message.reply_text("❌ Нельзя."); return SECRET_ACTION
     context.user_data["secret_action"] = text
     user_id = update.effective_user.id
@@ -644,7 +614,7 @@ async def get_disliked_books(update, context):
     safe, words = is_safe_text(text)
     log_message(update.effective_user.id, update.effective_chat.id, text, not safe, ", ".join(words))
     if not safe:
-        if has_terrorism(text) and ADMIN_CHAT_ID: await context.bot.send_message(ADMIN_CHAT_ID, f"🚨 Терроризм от {update.effective_user.id}:\n{text[:200]}")
+        if has_terrorism(text) and (await get_admin_id()): await context.bot.send_message(await get_admin_id(), f"🚨 Терроризм от {update.effective_user.id}:\n{text[:200]}")
         await update.message.reply_text("❌ Запрещённое содержание."); return DISLIKED_BOOKS
     context.user_data["disliked_books"] = text
     await update.message.reply_text("Почему разочаровали?")
@@ -655,7 +625,7 @@ async def get_book_reason(update, context):
     safe, words = is_safe_text(text)
     log_message(update.effective_user.id, update.effective_chat.id, text, not safe, ", ".join(words))
     if not safe:
-        if has_terrorism(text) and ADMIN_CHAT_ID: await context.bot.send_message(ADMIN_CHAT_ID, f"🚨 Терроризм от {update.effective_user.id}:\n{text[:200]}")
+        if has_terrorism(text) and (await get_admin_id()): await context.bot.send_message(await get_admin_id(), f"🚨 Терроризм от {update.effective_user.id}:\n{text[:200]}")
         await update.message.reply_text("❌ Нельзя."); return BOOK_REASON
     context.user_data["book_reason"] = text
     user_id = update.effective_user.id
@@ -680,7 +650,7 @@ async def get_city(update, context):
     safe, words = is_safe_text(text)
     log_message(update.effective_user.id, update.effective_chat.id, text, not safe, ", ".join(words))
     if not safe:
-        if has_terrorism(text) and ADMIN_CHAT_ID: await context.bot.send_message(ADMIN_CHAT_ID, f"🚨 Терроризм от {update.effective_user.id}:\n{text[:200]}")
+        if has_terrorism(text) and (await get_admin_id()): await context.bot.send_message(await get_admin_id(), f"🚨 Терроризм от {update.effective_user.id}:\n{text[:200]}")
         await update.message.reply_text("❌ Запрещённый город."); return CITY
     context.user_data["city"] = text
     await update.message.reply_text("Место, где заряжаетесь энергией?")
@@ -691,7 +661,7 @@ async def get_energy_place(update, context):
     safe, words = is_safe_text(text)
     log_message(update.effective_user.id, update.effective_chat.id, text, not safe, ", ".join(words))
     if not safe:
-        if has_terrorism(text) and ADMIN_CHAT_ID: await context.bot.send_message(ADMIN_CHAT_ID, f"🚨 Терроризм от {update.effective_user.id}:\n{text[:200]}")
+        if has_terrorism(text) and (await get_admin_id()): await context.bot.send_message(await get_admin_id(), f"🚨 Терроризм от {update.effective_user.id}:\n{text[:200]}")
         await update.message.reply_text("❌ Нельзя."); return ENERGY_PLACE
     context.user_data["energy_place"] = text
     await update.message.reply_text("Место, которое бесит?")
@@ -702,7 +672,7 @@ async def get_hate_place(update, context):
     safe, words = is_safe_text(text)
     log_message(update.effective_user.id, update.effective_chat.id, text, not safe, ", ".join(words))
     if not safe:
-        if has_terrorism(text) and ADMIN_CHAT_ID: await context.bot.send_message(ADMIN_CHAT_ID, f"🚨 Терроризм от {update.effective_user.id}:\n{text[:200]}")
+        if has_terrorism(text) and (await get_admin_id()): await context.bot.send_message(await get_admin_id(), f"🚨 Терроризм от {update.effective_user.id}:\n{text[:200]}")
         await update.message.reply_text("❌ Нельзя."); return HATE_PLACE
     context.user_data["hate_place"] = text
     await update.message.reply_text("Куда хотите сходить?")
@@ -713,7 +683,7 @@ async def get_want_place(update, context):
     safe, words = is_safe_text(text)
     log_message(update.effective_user.id, update.effective_chat.id, text, not safe, ", ".join(words))
     if not safe:
-        if has_terrorism(text) and ADMIN_CHAT_ID: await context.bot.send_message(ADMIN_CHAT_ID, f"🚨 Терроризм от {update.effective_user.id}:\n{text[:200]}")
+        if has_terrorism(text) and (await get_admin_id()): await context.bot.send_message(await get_admin_id(), f"🚨 Терроризм от {update.effective_user.id}:\n{text[:200]}")
         await update.message.reply_text("❌ Нельзя."); return WANT_PLACE
     context.user_data["want_place"] = text
     user_id = update.effective_user.id
@@ -814,15 +784,7 @@ async def search(update, context):
         answers = {"morning":"🌅 Утро","evening":"🌙 Вечер","coffee":"☕ Кофе","tea":"🍵 Чай","mountains":"🏔 Горы","sea":"🌊 Море"}
         text = f"❓ АНКЕТА\nИмя: {profile[1]}\n• {answers.get(profile[2], profile[2])}\n• {answers.get(profile[3], profile[3])}\n• {answers.get(profile[4], profile[4])}"
     if profile[0] >= AI_START_RANGE:
-        conn = sqlite3.connect("dating_bot.db")
-        c = conn.cursor()
-        c.execute("SELECT avatar_file_id FROM ai_profiles WHERE user_id=?", (profile[0],))
-        avatar = c.fetchone()
-        conn.close()
-        if avatar and avatar[0]:
-            await update.message.reply_photo(photo=avatar[0], caption=f"🤖 {text}", reply_markup=search_keyboard(profile[0]))
-        else:
-            await update.message.reply_text(f"🤖 {text}", reply_markup=search_keyboard(profile[0]))
+        await update.message.reply_text(f"🤖 {text}", reply_markup=search_keyboard(profile[0]))
     else:
         await update.message.reply_text(text, reply_markup=search_keyboard(profile[0]))
 
@@ -1102,14 +1064,16 @@ async def privacy(update, context):
     await update.message.reply_text("Политика конфиденциальности: ... (текст документа).")
 
 async def admin_ban(update, context):
-    if not ADMIN_CHAT_ID or update.effective_user.id != ADMIN_CHAT_ID: return
+    admin = await get_admin_id()
+    if not admin or update.effective_user.id != admin: return
     try:
         target = int(context.args[0]); reason = " ".join(context.args[1:]) or "Нарушение"
         ban_user(target, reason); await update.message.reply_text("✅ Забанен.")
     except: pass
 
 async def admin_review(update, context):
-    if not ADMIN_CHAT_ID or update.effective_user.id != ADMIN_CHAT_ID: return
+    admin = await get_admin_id()
+    if not admin or update.effective_user.id != admin: return
     try: target = int(context.args[0])
     except: await update.message.reply_text("/review <id>"); return
     conn = sqlite3.connect("dating_bot.db")
@@ -1126,7 +1090,8 @@ async def admin_review(update, context):
     await update.message.reply_text(text)
 
 async def ai_manage_cmd(update, context):
-    if not ADMIN_CHAT_ID or update.effective_user.id != ADMIN_CHAT_ID: return
+    admin = await get_admin_id()
+    if not admin or update.effective_user.id != admin: return
     text = "📊 Статистика AI:\n"
     for mode in MIN_PROFILES_PER_MODE:
         real = count_real_users_in_mode(mode)
@@ -1141,7 +1106,8 @@ async def ai_manage_cmd(update, context):
 
 async def ai_button(update, context):
     query = update.callback_query; await query.answer()
-    if not ADMIN_CHAT_ID or query.from_user.id != ADMIN_CHAT_ID: return
+    admin = await get_admin_id()
+    if not admin or query.from_user.id != admin: return
     data = query.data
     if data == "ai_auto":
         manage_all_ai()
@@ -1164,15 +1130,21 @@ async def ai_button(update, context):
 async def cancel(update, context):
     await update.message.reply_text("❌ Отменено."); return ConversationHandler.END
 
+# ---------- ЗАПУСК ----------
 def main():
-    app = Application.builder().token(BOT_TOKEN).build()
+    TOKEN = os.environ.get("BOT_TOKEN")
+    if not TOKEN:
+        raise RuntimeError("BOT_TOKEN not set")
 
+    app = Application.builder().token(TOKEN).build()
+
+    # Планировщик и AI
     scheduler = AsyncIOScheduler()
     scheduler.add_job(manage_all_ai, 'interval', hours=1)
     scheduler.add_job(lambda: ai_like_random_users(app), 'interval', hours=1)
     scheduler.start()
-    # asyncio.ensure_future(generate_ai_avatars(app))
 
+    # ConversationHandler регистрации
     conv_handler = ConversationHandler(
         entry_points=[CallbackQueryHandler(choose_mode, pattern="^mode_")],
         states={
@@ -1202,6 +1174,7 @@ def main():
         fallbacks=[CommandHandler("cancel", cancel)],
     )
 
+    # Регистрация обработчиков
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", lambda u,c: u.message.reply_text("/start /search /matches /profile /invite /shop /balance /setcity /delete /privacy /appeal")))
     app.add_handler(CommandHandler("search", search))
@@ -1232,11 +1205,28 @@ def main():
     app.add_handler(CallbackQueryHandler(ai_button, pattern="^ai_"))
     app.add_handler(PreCheckoutQueryHandler(precheckout))
     app.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment))
+    # AI‑диалоги (после всех основных обработчиков)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_ai_conversation), group=1)
 
-    manage_all_ai()
-    print("🤖 Бот запущен!")
-    app.run_polling()
+    # Запуск: webhook, если задан порт (Render), иначе polling
+    port = os.environ.get("PORT")
+    if port:
+        render_external_url = os.environ.get("RENDER_EXTERNAL_URL", "")
+        if not render_external_url:
+            service_name = os.environ.get("RENDER_SERVICE_NAME", "dating-bot")
+            render_external_url = f"https://{service_name}.onrender.com"
+        webhook_url = f"{render_external_url}/webhook"
+        app.run_webhook(
+            listen="0.0.0.0",
+            port=int(port),
+            webhook_url=webhook_url,
+            drop_pending_updates=True
+        )
+        print(f"🤖 Бот запущен через webhook на порту {port}")
+    else:
+        manage_all_ai()
+        app.run_polling(drop_pending_updates=True)
+        print("🤖 Бот запущен локально через polling")
 
 if __name__ == "__main__":
     main()
