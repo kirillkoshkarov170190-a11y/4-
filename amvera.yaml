@@ -6,5 +6,5 @@ meta:
 build:
   requirementsPath: requirements.txt
 run:
-  scriptName: bot.py
+  scriptName: /app/bot.py
   containerPort: 80
