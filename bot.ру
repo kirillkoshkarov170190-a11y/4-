@@ -6,7 +6,7 @@ from telegram.ext import (
     ConversationHandler, ContextTypes, filters, PreCheckoutQueryHandler
 )
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from PIL import Image, ImageDraw, ImageFont
+# from PIL import Image, ImageDraw, ImageFont
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
