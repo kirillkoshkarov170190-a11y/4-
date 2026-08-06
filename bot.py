@@ -528,10 +528,12 @@ async def check_birthdate(update, context):
         await update.message.reply_text("❌ Формат ДД.ММ.ГГГГ"); return BIRTH_DATE
 
 async def choose_gender(update, context):
-    query = update.callback_query; await query.answer()
+    query = update.callback_query
+    await query.answer()
     context.user_data["gender"] = query.data.split("_")[1]
     keyboard = [[KeyboardButton("📱 Отправить номер телефона", request_contact=True)]]
-    await query.edit_message_text(
+    # Отправляем новое сообщение с reply-клавиатурой
+    await query.message.reply_text(
         "Для завершения регистрации подтвердите номер телефона.\nНажмите кнопку ниже.",
         reply_markup=ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
     )
