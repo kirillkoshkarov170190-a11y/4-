@@ -1,2 +1,2 @@
+--index-url https://pypi.tuna.tsinghua.edu.cn/simple
 python-telegram-bot[job-queue]==20.7
-apscheduler
