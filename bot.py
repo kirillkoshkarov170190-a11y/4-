@@ -69,7 +69,9 @@ def init_db():
     c.execute("CREATE TABLE IF NOT EXISTS complaints (id INTEGER PRIMARY KEY AUTOINCREMENT, from_user INTEGER, about_user INTEGER, created_at TEXT)")
     c.execute("CREATE TABLE IF NOT EXISTS moderation_flags (user_id PRIMARY KEY, flag TEXT, details TEXT)")
     c.execute("CREATE TABLE IF NOT EXISTS appeals (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, text TEXT, created_at TEXT)")
-    c.execute("CREATE TABLE IF NOT EXISTS message_log (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, message_text TEXT, filter_triggered INTEGER, filter_reason TEXT, timestamp TEXT)")
+    c.execute("""CREATE TABLE IF NOT EXISTS message_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, chat_id INTEGER,
+        message_text TEXT, filter_triggered INTEGER, filter_reason TEXT, timestamp TEXT)""")
     c.execute("CREATE TABLE IF NOT EXISTS active_packs (user_id INTEGER, pack_name TEXT, expiry TEXT, uses_left INTEGER, PRIMARY KEY(user_id, pack_name))")
     c.execute("""CREATE TABLE IF NOT EXISTS referrals (referrer_id INTEGER, referred_id INTEGER PRIMARY KEY, date TEXT, bonus_given INTEGER DEFAULT 0)""")
     c.execute("""CREATE TABLE IF NOT EXISTS ai_profiles (
@@ -84,11 +86,6 @@ def init_db():
     c.execute("""CREATE TABLE IF NOT EXISTS ai_daily_limit (
         user_id INTEGER, ai_id INTEGER, date TEXT, msg_count INTEGER DEFAULT 0,
         PRIMARY KEY (user_id, ai_id, date))""")
-    # Обновление таблицы message_log: добавляем chat_id, если его ещё нет
-try:
-    c.execute("ALTER TABLE message_log ADD COLUMN chat_id INTEGER DEFAULT 0")
-except sqlite3.OperationalError:
-    pass
     conn.commit()
     conn.close()
 
@@ -408,7 +405,7 @@ async def handle_ai_conversation(update: Update, context: ContextTypes.DEFAULT_T
     if not msg or not msg.text:
         return
     user_id = msg.from_user.id
-    # Не обрабатываем, если пользователь в процессе регистрации (есть user_data с режимом)
+    # Не обрабатываем, если пользователь в процессе регистрации
     if context.user_data and context.user_data.get("mode"):
         return
 
