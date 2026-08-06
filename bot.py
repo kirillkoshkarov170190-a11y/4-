@@ -72,6 +72,11 @@ def init_db():
     c.execute("""CREATE TABLE IF NOT EXISTS message_log (
         id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, chat_id INTEGER,
         message_text TEXT, filter_triggered INTEGER, filter_reason TEXT, timestamp TEXT)""")
+    # Автоматическое добавление колонки chat_id, если её ещё нет
+    try:
+        c.execute("ALTER TABLE message_log ADD COLUMN chat_id INTEGER DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass
     c.execute("CREATE TABLE IF NOT EXISTS active_packs (user_id INTEGER, pack_name TEXT, expiry TEXT, uses_left INTEGER, PRIMARY KEY(user_id, pack_name))")
     c.execute("""CREATE TABLE IF NOT EXISTS referrals (referrer_id INTEGER, referred_id INTEGER PRIMARY KEY, date TEXT, bonus_given INTEGER DEFAULT 0)""")
     c.execute("""CREATE TABLE IF NOT EXISTS ai_profiles (
