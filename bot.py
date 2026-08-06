@@ -400,9 +400,13 @@ async def ai_like_random_users(app: Application):
 
 async def handle_ai_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
-    if not msg or not msg.text: return
+    if not msg or not msg.text:
+        return
     user_id = msg.from_user.id
-    text = msg.text
+    # Не обрабатываем, если пользователь в процессе регистрации (есть user_data с режимом)
+    if context.user_data and context.user_data.get("mode"):
+        return
+
     conn = sqlite3.connect("/data/dating_bot.db")
     c = conn.cursor()
     c.execute("""SELECT m.user1, m.user2, m.mode, a.user_id FROM matches m
@@ -1159,7 +1163,10 @@ def main():
 
     app = Application.builder().token(TOKEN).build()
 
-    # Планировщик заменён на встроенный JobQueue
+    # Первичное создание AI‑профилей
+    manage_all_ai()
+
+    # Планировщик через JobQueue
     app.job_queue.run_repeating(lambda ctx: manage_all_ai(), interval=3600, first=0)
     app.job_queue.run_repeating(lambda ctx: asyncio.ensure_future(ai_like_random_users(app)), interval=3600, first=30)
 
@@ -1224,7 +1231,7 @@ def main():
     app.add_handler(CallbackQueryHandler(ai_button, pattern="^ai_"))
     app.add_handler(PreCheckoutQueryHandler(precheckout))
     app.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment))
-    # AI‑диалоги
+    # AI‑диалоги (не перехватывают регистрацию)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_ai_conversation), group=1)
 
     # Запуск
