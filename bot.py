@@ -9,7 +9,7 @@ from telegram.ext import (
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-BOT_USERNAME = "WeirdMeetBot"  # без @
+BOT_USERNAME = "WeirdMeetBot"
 
 # Состояния (вручную, 18 переменных)
 CHOOSE_MODE   = 0
@@ -1241,18 +1241,9 @@ def main():
     # AI‑диалоги (не перехватывают регистрацию)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_ai_conversation), group=1)
 
-    # Запуск только через вебхук (обязателен на Amvera)
-    service_name = os.environ.get("AMVERA_SERVICE_NAME", "dating-bot")
-    webhook_url = f"https://{service_name}.amvera.app/webhook"
-    port = int(os.environ.get("PORT", "8443"))
-
-    app.run_webhook(
-        listen="0.0.0.0",
-        port=port,
-        webhook_url=webhook_url,
-        drop_pending_updates=True
-    )
-    print(f"🤖 Бот запущен через webhook: {webhook_url}")
+    # Запуск через polling
+    app.run_polling(drop_pending_updates=True)
+    print("🤖 Бот запущен локально через polling")
 
 if __name__ == "__main__":
     main()
