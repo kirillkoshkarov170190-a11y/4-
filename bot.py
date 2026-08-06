@@ -1255,5 +1255,6 @@ def main():
         drop_pending_updates=True
     )
     print(f"🤖 Бот запущен через webhook: {webhook_url}")
+    
 if __name__ == "__main__":
     main()
