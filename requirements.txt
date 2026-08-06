@@ -1,2 +1,1 @@
---index-url https://pypi.tuna.tsinghua.edu.cn/simple
-python-telegram-bot[job-queue]==20.7
+python-telegram-bot[webhooks,job-queue]==20.7
