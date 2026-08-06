@@ -1241,24 +1241,18 @@ def main():
     # AI‑диалоги (не перехватывают регистрацию)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_ai_conversation), group=1)
 
-    # Запуск с вебхуком, если задан порт (Amvera/Render), иначе polling
-    port = os.environ.get("PORT")
-    if port:
-        render_external_url = os.environ.get("RENDER_EXTERNAL_URL", "")
-        if not render_external_url:
-            service_name = os.environ.get("RENDER_SERVICE_NAME", "dating-bot")
-            render_external_url = f"https://{service_name}.onrender.com"
-        webhook_url = f"{render_external_url}/webhook"
-        app.run_webhook(
-            listen="0.0.0.0",
-            port=int(port),
-            webhook_url=webhook_url,
-            drop_pending_updates=True
-        )
-        print(f"🤖 Бот запущен через webhook на порту {port}")
-    else:
-        app.run_polling(drop_pending_updates=True)
-        print("🤖 Бот запущен локально через polling")
+    # Запуск только через вебхук (обязателен на Amvera)
+    service_name = os.environ.get("AMVERA_SERVICE_NAME", "dating-bot")
+    webhook_url = f"https://{service_name}.amvera.app/webhook"
+    port = int(os.environ.get("PORT", "8443"))
+
+    app.run_webhook(
+        listen="0.0.0.0",
+        port=port,
+        webhook_url=webhook_url,
+        drop_pending_updates=True
+    )
+    print(f"🤖 Бот запущен через webhook: {webhook_url}")
 
 if __name__ == "__main__":
     main()
