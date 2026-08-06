@@ -84,6 +84,11 @@ def init_db():
     c.execute("""CREATE TABLE IF NOT EXISTS ai_daily_limit (
         user_id INTEGER, ai_id INTEGER, date TEXT, msg_count INTEGER DEFAULT 0,
         PRIMARY KEY (user_id, ai_id, date))""")
+    # Обновление таблицы message_log: добавляем chat_id, если его ещё нет
+try:
+    c.execute("ALTER TABLE message_log ADD COLUMN chat_id INTEGER DEFAULT 0")
+except sqlite3.OperationalError:
+    pass
     conn.commit()
     conn.close()
 
