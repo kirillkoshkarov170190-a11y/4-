@@ -50,11 +50,7 @@ def has_terrorism(text): return any(w in text.lower() for w in TERRORISM_KEYWORD
 # База данных
 def init_db():
     os.makedirs("/data", exist_ok=True)
-    # Удаляем старую базу, чтобы создать таблицы заново с правильной структурой
-    db_path = "/data/dating_bot.db"
-    if os.path.exists(db_path):
-        os.remove(db_path)
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect("/data/dating_bot.db")
     c = conn.cursor()
     c.execute("""CREATE TABLE IF NOT EXISTS users (
         user_id INTEGER PRIMARY KEY, username TEXT, first_name TEXT,
@@ -76,6 +72,11 @@ def init_db():
     c.execute("""CREATE TABLE IF NOT EXISTS message_log (
         id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, chat_id INTEGER,
         message_text TEXT, filter_triggered INTEGER, filter_reason TEXT, timestamp TEXT)""")
+    # Автоматическое добавление колонки chat_id, если её ещё нет
+    try:
+        c.execute("ALTER TABLE message_log ADD COLUMN chat_id INTEGER DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass
     c.execute("CREATE TABLE IF NOT EXISTS active_packs (user_id INTEGER, pack_name TEXT, expiry TEXT, uses_left INTEGER, PRIMARY KEY(user_id, pack_name))")
     c.execute("""CREATE TABLE IF NOT EXISTS referrals (referrer_id INTEGER, referred_id INTEGER PRIMARY KEY, date TEXT, bonus_given INTEGER DEFAULT 0)""")
     c.execute("""CREATE TABLE IF NOT EXISTS ai_profiles (
@@ -1162,7 +1163,7 @@ async def cancel(update, context):
     await update.message.reply_text("❌ Отменено."); return ConversationHandler.END
 
 # Запуск
-async def main():
+def main():
     TOKEN = os.environ.get("BOT_TOKEN")
     if not TOKEN:
         raise RuntimeError("BOT_TOKEN not set")
@@ -1240,10 +1241,9 @@ async def main():
     # AI‑диалоги (не перехватывают регистрацию)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_ai_conversation), group=1)
 
-    # Удаляем старый вебхук и запускаем polling
-    await app.bot.delete_webhook(drop_pending_updates=True)
+    # Запуск через polling
+    app.run_polling(drop_pending_updates=True)
     print("🤖 Бот запущен через polling")
-    await app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
