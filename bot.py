@@ -18,7 +18,7 @@ BOT_USERNAME = "WeirdMeetBot"  # без @
  DISLIKED_BOOKS, BOOK_REASON,
  CITY, ENERGY_PLACE, HATE_PLACE, WANT_PLACE,
  MICRO_Q1, MICRO_Q2, MICRO_Q3,
- APPEAL_TEXT) = range(18)
+ APPEAL_TEXT) = range(19)
 
 # ---------- Фильтры ----------
 FORBIDDEN_KEYWORDS = [
@@ -38,7 +38,9 @@ def has_terrorism(text): return any(w in text.lower() for w in TERRORISM_KEYWORD
 
 # ---------- База данных ----------
 def init_db():
-    conn = sqlite3.connect("dating_bot.db")
+    # ← ИСПРАВЛЕНО: создаём папку /data для постоянного хранения
+    os.makedirs("/data", exist_ok=True)
+    conn = sqlite3.connect("/data/dating_bot.db")  # ← ИСПРАВЛЕНО: путь к БД
     c = conn.cursor()
     c.execute("""CREATE TABLE IF NOT EXISTS users (
         user_id INTEGER PRIMARY KEY, username TEXT, first_name TEXT,
@@ -97,7 +99,7 @@ AI_WANT_PLACES = ["Смотровая площадка Москва-Сити","�
 
 # ---------- Служебные функции ----------
 def count_active_profiles():
-    conn = sqlite3.connect("dating_bot.db")
+    conn = sqlite3.connect("/data/dating_bot.db")  # ← ИСПРАВЛЕНО
     c = conn.cursor()
     c.execute("SELECT COUNT(*) FROM users WHERE user_id NOT IN (SELECT user_id FROM banned_users)")
     cnt = c.fetchone()[0]
@@ -107,7 +109,7 @@ def count_active_profiles():
 def is_launch_mode(): return count_active_profiles() < 500
 
 def reset_daily_limits(user_id):
-    conn = sqlite3.connect("dating_bot.db")
+    conn = sqlite3.connect("/data/dating_bot.db")  # ← ИСПРАВЛЕНО
     c = conn.cursor()
     c.execute("UPDATE users SET likes_today=0, last_like_date=? WHERE user_id=?", (date.today().isoformat(), user_id))
     conn.commit()
@@ -115,7 +117,7 @@ def reset_daily_limits(user_id):
 
 def can_like(user_id):
     if is_launch_mode(): return True
-    conn = sqlite3.connect("dating_bot.db")
+    conn = sqlite3.connect("/data/dating_bot.db")  # ← ИСПРАВЛЕНО
     c = conn.cursor()
     c.execute("SELECT likes_today, last_like_date, subscription_type, subscription_expiry FROM users WHERE user_id=?", (user_id,))
     row = c.fetchone()
@@ -130,13 +132,13 @@ def can_like(user_id):
     return likes < 15
 
 def is_banned(user_id):
-    conn = sqlite3.connect("dating_bot.db")
+    conn = sqlite3.connect("/data/dating_bot.db")  # ← ИСПРАВЛЕНО
     c = conn.cursor()
     c.execute("SELECT 1 FROM banned_users WHERE user_id=?", (user_id,))
     return c.fetchone() is not None
 
 def log_message(user_id, chat_id, text, triggered, reason):
-    conn = sqlite3.connect("dating_bot.db")
+    conn = sqlite3.connect("/data/dating_bot.db")  # ← ИСПРАВЛЕНО
     c = conn.cursor()
     c.execute("INSERT INTO message_log VALUES (NULL,?,?,?,?,?,?)",
               (user_id, chat_id, text, int(triggered), reason, datetime.now().strftime("%Y-%m-%d %H:%M")))
@@ -145,7 +147,7 @@ def log_message(user_id, chat_id, text, triggered, reason):
 
 def add_complaint(from_user, about_user):
     if about_user >= AI_START_RANGE: return 0
-    conn = sqlite3.connect("dating_bot.db")
+    conn = sqlite3.connect("/data/dating_bot.db")  # ← ИСПРАВЛЕНО
     c = conn.cursor()
     c.execute("INSERT INTO complaints (from_user, about_user, created_at) VALUES (?,?,?)",
               (from_user, about_user, datetime.now().strftime("%Y-%m-%d %H:%M")))
@@ -159,7 +161,7 @@ def add_complaint(from_user, about_user):
 
 def ban_user(user_id, reason="Нарушение"):
     if user_id >= AI_START_RANGE: return
-    conn = sqlite3.connect("dating_bot.db")
+    conn = sqlite3.connect("/data/dating_bot.db")  # ← ИСПРАВЛЕНО
     c = conn.cursor()
     c.execute("INSERT OR REPLACE INTO banned_users VALUES (?,?,?)", (user_id, reason, datetime.now().strftime("%Y-%m-%d %H:%M")))
     c.execute("INSERT OR REPLACE INTO moderation_flags VALUES (?,?,?)", (user_id, "banned", reason))
@@ -167,7 +169,7 @@ def ban_user(user_id, reason="Нарушение"):
     conn.close()
 
 def unban_user(user_id):
-    conn = sqlite3.connect("dating_bot.db")
+    conn = sqlite3.connect("/data/dating_bot.db")  # ← ИСПРАВЛЕНО
     c = conn.cursor()
     c.execute("DELETE FROM banned_users WHERE user_id=?", (user_id,))
     c.execute("DELETE FROM moderation_flags WHERE user_id=?", (user_id,))
@@ -175,14 +177,14 @@ def unban_user(user_id):
     conn.close()
 
 def add_coins(user_id, amount):
-    conn = sqlite3.connect("dating_bot.db")
+    conn = sqlite3.connect("/data/dating_bot.db")  # ← ИСПРАВЛЕНО
     c = conn.cursor()
     c.execute("UPDATE users SET coins = coins + ? WHERE user_id=?", (amount, user_id))
     conn.commit()
     conn.close()
 
 def spend_coins(user_id, amount):
-    conn = sqlite3.connect("dating_bot.db")
+    conn = sqlite3.connect("/data/dating_bot.db")  # ← ИСПРАВЛЕНО
     c = conn.cursor()
     c.execute("UPDATE users SET coins = coins - ? WHERE user_id=? AND coins >= ?", (amount, user_id, amount))
     ok = c.rowcount > 0
@@ -195,7 +197,7 @@ def get_referral_link(user_id):
     return f"https://t.me/{BOT_USERNAME}?start=ref{user_id}_{token}"
 
 async def process_referral_bonus(user_id, context):
-    conn = sqlite3.connect("dating_bot.db")
+    conn = sqlite3.connect("/data/dating_bot.db")  # ← ИСПРАВЛЕНО
     c = conn.cursor()
     c.execute("SELECT referrer_id, bonus_given FROM referrals WHERE referred_id=?", (user_id,))
     ref = c.fetchone()
@@ -217,7 +219,7 @@ async def process_referral_bonus(user_id, context):
 
 # ==================== AI-функции (без аватарок) ====================
 def get_available_ai_name(mode, gender):
-    conn = sqlite3.connect("dating_bot.db")
+    conn = sqlite3.connect("/data/dating_bot.db")  # ← ИСПРАВЛЕНО
     c = conn.cursor()
     c.execute("SELECT name FROM ai_profiles WHERE mode=? AND gender=? AND active=1", (mode, gender))
     used = {r[0] for r in c.fetchall()}
@@ -261,7 +263,7 @@ def create_single_ai(c, mode, gender=None):
               (new_id, mode, name, gender))
 
 def count_real_users_in_mode(mode):
-    conn = sqlite3.connect("dating_bot.db")
+    conn = sqlite3.connect("/data/dating_bot.db")  # ← ИСПРАВЛЕНО
     c = conn.cursor()
     c.execute("SELECT COUNT(*) FROM users WHERE mode=? AND user_id NOT IN (SELECT user_id FROM ai_profiles) AND user_id NOT IN (SELECT user_id FROM banned_users)", (mode,))
     cnt = c.fetchone()[0]
@@ -269,7 +271,7 @@ def count_real_users_in_mode(mode):
     return cnt
 
 def count_active_ai_in_mode(mode):
-    conn = sqlite3.connect("dating_bot.db")
+    conn = sqlite3.connect("/data/dating_bot.db")  # ← ИСПРАВЛЕНО
     c = conn.cursor()
     c.execute("SELECT COUNT(*) FROM ai_profiles WHERE mode=? AND active=1", (mode,))
     cnt = c.fetchone()[0]
@@ -282,7 +284,7 @@ def manage_ai_for_mode(mode):
     target = MIN_PROFILES_PER_MODE[mode]
     desired_ai = max(0, target - real)
     if desired_ai == current_ai: return
-    conn = sqlite3.connect("dating_bot.db")
+    conn = sqlite3.connect("/data/dating_bot.db")  # ← ИСПРАВЛЕНО
     c = conn.cursor()
     if desired_ai > current_ai:
         to_create = desired_ai - current_ai
@@ -328,7 +330,7 @@ AI_DIALOG_TEMPLATES = {
 
 def can_ai_reply(user_id, ai_id):
     today = date.today().isoformat()
-    conn = sqlite3.connect("dating_bot.db")
+    conn = sqlite3.connect("/data/dating_bot.db")  # ← ИСПРАВЛЕНО
     c = conn.cursor()
     c.execute("SELECT msg_count FROM ai_daily_limit WHERE user_id=? AND ai_id=? AND date=?", (user_id, ai_id, today))
     row = c.fetchone()
@@ -337,7 +339,7 @@ def can_ai_reply(user_id, ai_id):
     return True
 
 def record_ai_message(user_id, ai_id, from_ai, text):
-    conn = sqlite3.connect("dating_bot.db")
+    conn = sqlite3.connect("/data/dating_bot.db")  # ← ИСПРАВЛЕНО
     c = conn.cursor()
     today = date.today().isoformat()
     c.execute("INSERT INTO ai_conversations (user_id, ai_id, message_text, from_ai, timestamp) VALUES (?,?,?,?,?)",
@@ -359,7 +361,7 @@ def generate_ai_response(user_msg, mode, profile_info):
     return random.choice(templates["reply_default"])
 
 async def ai_like_random_users(app: Application):
-    conn = sqlite3.connect("dating_bot.db")
+    conn = sqlite3.connect("/data/dating_bot.db")  # ← ИСПРАВЛЕНО
     c = conn.cursor()
     c.execute("SELECT user_id, mode FROM ai_profiles WHERE active=1")
     ai_list = c.fetchall()
@@ -391,7 +393,7 @@ async def handle_ai_conversation(update: Update, context: ContextTypes.DEFAULT_T
     if not msg or not msg.text: return
     user_id = msg.from_user.id
     text = msg.text
-    conn = sqlite3.connect("dating_bot.db")
+    conn = sqlite3.connect("/data/dating_bot.db")  # ← ИСПРАВЛЕНО
     c = conn.cursor()
     c.execute("""SELECT m.user1, m.user2, m.mode, a.user_id FROM matches m
                  JOIN ai_profiles a ON (a.user_id = m.user1 OR a.user_id = m.user2)
@@ -422,7 +424,7 @@ async def start(update, context):
             referrer_id_str, _ = ref_part.split("_")
             referrer_id = int(referrer_id_str)
             if referrer_id != user_id:
-                conn = sqlite3.connect("dating_bot.db")
+                conn = sqlite3.connect("/data/dating_bot.db")  # ← ИСПРАВЛЕНО
                 c = conn.cursor()
                 c.execute("SELECT referrer_id FROM referrals WHERE referred_id=?", (user_id,))
                 if not c.fetchone():
@@ -470,7 +472,7 @@ async def choose_mode(update, context):
         await query.edit_message_text("⛔ Вы заблокированы."); return ConversationHandler.END
     mode = query.data.split("_")[1]
     context.user_data["mode"] = mode
-    conn = sqlite3.connect("dating_bot.db")
+    conn = sqlite3.connect("/data/dating_bot.db")  # ← ИСПРАВЛЕНО
     c = conn.cursor()
     c.execute("SELECT mode FROM users WHERE user_id=?", (query.from_user.id,))
     if c.fetchone():
@@ -562,7 +564,8 @@ async def get_strange_habit(update, context):
     safe, words = is_safe_text(text)
     log_message(update.effective_user.id, update.effective_chat.id, text, not safe, ", ".join(words))
     if not safe:
-        if has_terrorism(text) and (await get_admin_id()): await context.bot.send_message(await get_admin_id(), f"🚨 Терроризм от {update.effective_user.id}:\n{text[:200]}")
+        admin = await get_admin_id()
+        if has_terrorism(text) and admin: await context.bot.send_message(admin, f"🚨 Терроризм от {update.effective_user.id}:\n{text[:200]}")
         await update.message.reply_text("❌ Запрещённые слова."); return STRANGE_HABIT
     context.user_data["strange_habit"] = text
     await update.message.reply_text("🔥 Любимый мем?")
@@ -577,7 +580,8 @@ async def get_favorite_meme(update, context):
     safe, words = is_safe_text(text)
     log_message(update.effective_user.id, update.effective_chat.id, text, not safe, ", ".join(words))
     if not safe:
-        if has_terrorism(text) and (await get_admin_id()): await context.bot.send_message(await get_admin_id(), f"🚨 Терроризм от {update.effective_user.id}:\n{text[:200]}")
+        admin = await get_admin_id()
+        if has_terrorism(text) and admin: await context.bot.send_message(admin, f"🚨 Терроризм от {update.effective_user.id}:\n{text[:200]}")
         await update.message.reply_text("❌ Недопустимый мем."); return FAVORITE_MEME
     context.user_data["favorite_meme"] = text
     await update.message.reply_text("🤫 Что делаете, когда никто не видит?")
@@ -588,11 +592,12 @@ async def get_secret_action(update, context):
     safe, words = is_safe_text(text)
     log_message(update.effective_user.id, update.effective_chat.id, text, not safe, ", ".join(words))
     if not safe:
-        if has_terrorism(text) and (await get_admin_id()): await context.bot.send_message(await get_admin_id(), f"🚨 Терроризм от {update.effective_user.id}:\n{text[:200]}")
+        admin = await get_admin_id()
+        if has_terrorism(text) and admin: await context.bot.send_message(admin, f"🚨 Терроризм от {update.effective_user.id}:\n{text[:200]}")
         await update.message.reply_text("❌ Нельзя."); return SECRET_ACTION
     context.user_data["secret_action"] = text
     user_id = update.effective_user.id
-    conn = sqlite3.connect("dating_bot.db")
+    conn = sqlite3.connect("/data/dating_bot.db")  # ← ИСПРАВЛЕНО
     c = conn.cursor()
     trial = ""
     if not is_launch_mode():
@@ -614,7 +619,8 @@ async def get_disliked_books(update, context):
     safe, words = is_safe_text(text)
     log_message(update.effective_user.id, update.effective_chat.id, text, not safe, ", ".join(words))
     if not safe:
-        if has_terrorism(text) and (await get_admin_id()): await context.bot.send_message(await get_admin_id(), f"🚨 Терроризм от {update.effective_user.id}:\n{text[:200]}")
+        admin = await get_admin_id()
+        if has_terrorism(text) and admin: await context.bot.send_message(admin, f"🚨 Терроризм от {update.effective_user.id}:\n{text[:200]}")
         await update.message.reply_text("❌ Запрещённое содержание."); return DISLIKED_BOOKS
     context.user_data["disliked_books"] = text
     await update.message.reply_text("Почему разочаровали?")
@@ -625,11 +631,12 @@ async def get_book_reason(update, context):
     safe, words = is_safe_text(text)
     log_message(update.effective_user.id, update.effective_chat.id, text, not safe, ", ".join(words))
     if not safe:
-        if has_terrorism(text) and (await get_admin_id()): await context.bot.send_message(await get_admin_id(), f"🚨 Терроризм от {update.effective_user.id}:\n{text[:200]}")
+        admin = await get_admin_id()
+        if has_terrorism(text) and admin: await context.bot.send_message(admin, f"🚨 Терроризм от {update.effective_user.id}:\n{text[:200]}")
         await update.message.reply_text("❌ Нельзя."); return BOOK_REASON
     context.user_data["book_reason"] = text
     user_id = update.effective_user.id
-    conn = sqlite3.connect("dating_bot.db")
+    conn = sqlite3.connect("/data/dating_bot.db")  # ← ИСПРАВЛЕНО
     c = conn.cursor()
     trial = ""
     if not is_launch_mode(): trial = (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%d %H:%M")
@@ -650,7 +657,8 @@ async def get_city(update, context):
     safe, words = is_safe_text(text)
     log_message(update.effective_user.id, update.effective_chat.id, text, not safe, ", ".join(words))
     if not safe:
-        if has_terrorism(text) and (await get_admin_id()): await context.bot.send_message(await get_admin_id(), f"🚨 Терроризм от {update.effective_user.id}:\n{text[:200]}")
+        admin = await get_admin_id()
+        if has_terrorism(text) and admin: await context.bot.send_message(admin, f"🚨 Терроризм от {update.effective_user.id}:\n{text[:200]}")
         await update.message.reply_text("❌ Запрещённый город."); return CITY
     context.user_data["city"] = text
     await update.message.reply_text("Место, где заряжаетесь энергией?")
@@ -661,7 +669,8 @@ async def get_energy_place(update, context):
     safe, words = is_safe_text(text)
     log_message(update.effective_user.id, update.effective_chat.id, text, not safe, ", ".join(words))
     if not safe:
-        if has_terrorism(text) and (await get_admin_id()): await context.bot.send_message(await get_admin_id(), f"🚨 Терроризм от {update.effective_user.id}:\n{text[:200]}")
+        admin = await get_admin_id()
+        if has_terrorism(text) and admin: await context.bot.send_message(admin, f"🚨 Терроризм от {update.effective_user.id}:\n{text[:200]}")
         await update.message.reply_text("❌ Нельзя."); return ENERGY_PLACE
     context.user_data["energy_place"] = text
     await update.message.reply_text("Место, которое бесит?")
@@ -672,7 +681,8 @@ async def get_hate_place(update, context):
     safe, words = is_safe_text(text)
     log_message(update.effective_user.id, update.effective_chat.id, text, not safe, ", ".join(words))
     if not safe:
-        if has_terrorism(text) and (await get_admin_id()): await context.bot.send_message(await get_admin_id(), f"🚨 Терроризм от {update.effective_user.id}:\n{text[:200]}")
+        admin = await get_admin_id()
+        if has_terrorism(text) and admin: await context.bot.send_message(admin, f"🚨 Терроризм от {update.effective_user.id}:\n{text[:200]}")
         await update.message.reply_text("❌ Нельзя."); return HATE_PLACE
     context.user_data["hate_place"] = text
     await update.message.reply_text("Куда хотите сходить?")
@@ -683,11 +693,12 @@ async def get_want_place(update, context):
     safe, words = is_safe_text(text)
     log_message(update.effective_user.id, update.effective_chat.id, text, not safe, ", ".join(words))
     if not safe:
-        if has_terrorism(text) and (await get_admin_id()): await context.bot.send_message(await get_admin_id(), f"🚨 Терроризм от {update.effective_user.id}:\n{text[:200]}")
+        admin = await get_admin_id()
+        if has_terrorism(text) and admin: await context.bot.send_message(admin, f"🚨 Терроризм от {update.effective_user.id}:\n{text[:200]}")
         await update.message.reply_text("❌ Нельзя."); return WANT_PLACE
     context.user_data["want_place"] = text
     user_id = update.effective_user.id
-    conn = sqlite3.connect("dating_bot.db")
+    conn = sqlite3.connect("/data/dating_bot.db")  # ← ИСПРАВЛЕНО
     c = conn.cursor()
     trial = ""
     if not is_launch_mode(): trial = (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%d %H:%M")
@@ -723,7 +734,7 @@ async def micro_q3(update, context):
     query = update.callback_query; await query.answer()
     context.user_data["answer_3"] = query.data
     user_id = query.from_user.id
-    conn = sqlite3.connect("dating_bot.db")
+    conn = sqlite3.connect("/data/dating_bot.db")  # ← ИСПРАВЛЕНО
     c = conn.cursor()
     trial = ""
     if not is_launch_mode(): trial = (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%d %H:%M")
@@ -741,7 +752,7 @@ async def micro_q3(update, context):
 
 # ---------- Поиск ----------
 def find_next_profile(user_id, mode, search_city=None):
-    conn = sqlite3.connect("dating_bot.db")
+    conn = sqlite3.connect("/data/dating_bot.db")  # ← ИСПРАВЛЕНО
     c = conn.cursor()
     c.execute("SELECT to_user FROM likes WHERE from_user=? AND mode=?", (user_id, mode))
     viewed = [r[0] for r in c.fetchall()] + [user_id]
@@ -767,7 +778,7 @@ async def search(update, context):
     user_id = update.effective_user.id
     if is_banned(user_id): await update.message.reply_text("⛔ Вы заблокированы."); return
     if not can_like(user_id): await update.message.reply_text("⚠️ Дневной лимит лайков исчерпан."); return
-    conn = sqlite3.connect("dating_bot.db")
+    conn = sqlite3.connect("/data/dating_bot.db")  # ← ИСПРАВЛЕНО
     c = conn.cursor()
     c.execute("SELECT mode, search_city FROM users WHERE user_id=?", (user_id,))
     user = c.fetchone()
@@ -793,7 +804,7 @@ async def handle_like(update, context):
     from_user = query.from_user.id
     if is_banned(from_user): return
     to_user = int(query.data.split("_")[1])
-    conn = sqlite3.connect("dating_bot.db")
+    conn = sqlite3.connect("/data/dating_bot.db")  # ← ИСПРАВЛЕНО
     c = conn.cursor()
     c.execute("SELECT mode FROM users WHERE user_id=?", (from_user,))
     mode = c.fetchone()[0] if c.fetchone() else "micro"
@@ -818,7 +829,7 @@ async def handle_dislike(update, context):
     from_user = query.from_user.id
     if is_banned(from_user): return
     to_user = int(query.data.split("_")[1])
-    conn = sqlite3.connect("dating_bot.db")
+    conn = sqlite3.connect("/data/dating_bot.db")  # ← ИСПРАВЛЕНО
     c = conn.cursor()
     c.execute("SELECT mode FROM users WHERE user_id=?", (from_user,))
     mode = c.fetchone()[0] if c.fetchone() else "micro"
@@ -842,7 +853,7 @@ async def handle_report(update, context):
         return
     add_complaint(from_user, about_user)
     await query.answer("Жалоба отправлена.")
-    conn = sqlite3.connect("dating_bot.db")
+    conn = sqlite3.connect("/data/dating_bot.db")  # ← ИСПРАВЛЕНО
     c = conn.cursor()
     c.execute("SELECT mode FROM users WHERE user_id=?", (from_user,))
     mode = c.fetchone()[0] if c.fetchone() else "micro"
@@ -864,7 +875,7 @@ async def show_profile(update, context):
     if query: await query.answer(); user_id = query.from_user.id
     else: user_id = update.effective_user.id
     if is_banned(user_id): await update.message.reply_text("⛔ Вы заблокированы."); return
-    conn = sqlite3.connect("dating_bot.db")
+    conn = sqlite3.connect("/data/dating_bot.db")  # ← ИСПРАВЛЕНО
     c = conn.cursor()
     c.execute("SELECT mode, coins, subscription_type, subscription_expiry, gender, city, search_city FROM users WHERE user_id=?", (user_id,))
     row = c.fetchone()
@@ -905,7 +916,7 @@ async def show_matches(update, context):
     if query: await query.answer(); user_id = query.from_user.id
     else: user_id = update.effective_user.id
     if is_banned(user_id): await update.message.reply_text("⛔ Вы заблокированы."); return
-    conn = sqlite3.connect("dating_bot.db")
+    conn = sqlite3.connect("/data/dating_bot.db")  # ← ИСПРАВЛЕНО
     c = conn.cursor()
     c.execute("""SELECT CASE WHEN user1=? THEN user2 ELSE user1 END, mode FROM matches WHERE user1=? OR user2=? ORDER BY match_date DESC""", (user_id, user_id, user_id))
     matches = c.fetchall()
@@ -941,7 +952,7 @@ async def shop(update, context):
 
 async def my_balance(update, context):
     user_id = update.effective_user.id
-    conn = sqlite3.connect("dating_bot.db")
+    conn = sqlite3.connect("/data/dating_bot.db")  # ← ИСПРАВЛЕНО
     c = conn.cursor()
     c.execute("SELECT coins, subscription_type, subscription_expiry FROM users WHERE user_id=?", (user_id,))
     row = c.fetchone()
@@ -993,7 +1004,7 @@ async def successful_payment(update, context):
             expiry = (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%d %H:%M")
             sub_type = "month"; coins_gift = 300
         else: return
-        conn = sqlite3.connect("dating_bot.db")
+        conn = sqlite3.connect("/data/dating_bot.db")  # ← ИСПРАВЛЕНО
         c = conn.cursor()
         c.execute("UPDATE users SET subscription_type=?, subscription_expiry=?, coins = coins + ? WHERE user_id=?",
                   (sub_type, expiry, coins_gift, user_id))
@@ -1006,7 +1017,7 @@ async def successful_payment(update, context):
         elif pack_name == "weekend_route": expiry = (datetime.now()+timedelta(days=1)).strftime("%Y-%m-%d %H:%M"); uses = None
         elif pack_name == "evening_questions": expiry = (datetime.now()+timedelta(hours=3)).strftime("%Y-%m-%d %H:%M"); uses = 3
         else: return
-        conn = sqlite3.connect("dating_bot.db")
+        conn = sqlite3.connect("/data/dating_bot.db")  # ← ИСПРАВЛЕНО
         c = conn.cursor()
         c.execute("INSERT OR REPLACE INTO active_packs VALUES (?, ?, ?, ?)", (user_id, pack_name, expiry, uses))
         conn.commit(); conn.close()
@@ -1014,7 +1025,7 @@ async def successful_payment(update, context):
 
 async def invite(update, context):
     user_id = update.effective_user.id
-    conn = sqlite3.connect("dating_bot.db")
+    conn = sqlite3.connect("/data/dating_bot.db")  # ← ИСПРАВЛЕНО
     c = conn.cursor()
     c.execute("SELECT COUNT(*) FROM referrals WHERE referrer_id=? AND bonus_given=1", (user_id,))
     cnt = c.fetchone()[0]
@@ -1033,7 +1044,7 @@ async def receive_appeal(update, context):
     if update.message.photo: text = "[Фото] " + (update.message.caption or "")
     else: text = update.message.text
     log_message(user_id, update.effective_chat.id, text, False, "апелляция")
-    conn = sqlite3.connect("dating_bot.db")
+    conn = sqlite3.connect("/data/dating_bot.db")  # ← ИСПРАВЛЕНО
     c = conn.cursor()
     c.execute("INSERT INTO appeals (user_id, text, created_at) VALUES (?,?,?)", (user_id, text, datetime.now().strftime("%Y-%m-%d %H:%M")))
     conn.commit(); conn.close()
@@ -1044,7 +1055,7 @@ async def set_city(update, context):
     user_id = update.effective_user.id
     if not context.args: await update.message.reply_text("Использование: /setcity Москва"); return
     new_city = " ".join(context.args).strip()
-    conn = sqlite3.connect("dating_bot.db")
+    conn = sqlite3.connect("/data/dating_bot.db")  # ← ИСПРАВЛЕНО
     c = conn.cursor()
     c.execute("UPDATE users SET search_city=? WHERE user_id=?", (new_city, user_id))
     conn.commit(); conn.close()
@@ -1052,7 +1063,7 @@ async def set_city(update, context):
 
 async def delete_account(update, context):
     user_id = update.effective_user.id
-    conn = sqlite3.connect("dating_bot.db")
+    conn = sqlite3.connect("/data/dating_bot.db")  # ← ИСПРАВЛЕНО
     c = conn.cursor()
     tables = ["users","weird_profiles","book_profiles","city_profiles","micro_profiles","likes","matches","referrals","ai_conversations","ai_daily_limit","message_log","active_packs","complaints","appeals","moderation_flags"]
     for t in tables: c.execute(f"DELETE FROM {t} WHERE user_id=?", (user_id,))
@@ -1076,7 +1087,7 @@ async def admin_review(update, context):
     if not admin or update.effective_user.id != admin: return
     try: target = int(context.args[0])
     except: await update.message.reply_text("/review <id>"); return
-    conn = sqlite3.connect("dating_bot.db")
+    conn = sqlite3.connect("/data/dating_bot.db")  # ← ИСПРАВЛЕНО
     c = conn.cursor()
     c.execute("SELECT from_user, created_at FROM complaints WHERE about_user=?", (target,))
     complaints = c.fetchall()
@@ -1113,14 +1124,14 @@ async def ai_button(update, context):
         manage_all_ai()
         await query.edit_message_text("✅ Авто‑пересчёт выполнен.")
     elif data == "ai_add_10_each":
-        conn = sqlite3.connect("dating_bot.db")
+        conn = sqlite3.connect("/data/dating_bot.db")  # ← ИСПРАВЛЕНО
         c = conn.cursor()
         for mode in MIN_PROFILES_PER_MODE:
             for _ in range(10): create_single_ai(c, mode)
         conn.commit(); conn.close()
         await query.edit_message_text("✅ Добавлено по 10 AI в каждый режим.")
     elif data == "ai_remove_10_each":
-        conn = sqlite3.connect("dating_bot.db")
+        conn = sqlite3.connect("/data/dating_bot.db")  # ← ИСПРАВЛЕНО
         c = conn.cursor()
         for mode in MIN_PROFILES_PER_MODE:
             c.execute("UPDATE ai_profiles SET active=0 WHERE user_id IN (SELECT user_id FROM ai_profiles WHERE mode=? AND active=1 LIMIT 10)", (mode,))
@@ -1229,4 +1240,5 @@ def main():
         print("🤖 Бот запущен локально через polling")
 
 if __name__ == "__main__":
+    main()
     main()
