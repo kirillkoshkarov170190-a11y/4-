@@ -10,7 +10,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-BOT_USERNAME = "ВАШ_ЮЗЕРНЕЙМ_БОТА"  # без @
+BOT_USERNAME = "WeirdMeetBot"  # без @
 
 # ---------- Состояния (ЕДИНСТВЕННОЕ ОПРЕДЕЛЕНИЕ) ----------
 (CHOOSE_MODE, BIRTH_DATE, GENDER, PHONE_VERIFY, CITY_SELF,
@@ -18,7 +18,7 @@ BOT_USERNAME = "ВАШ_ЮЗЕРНЕЙМ_БОТА"  # без @
  DISLIKED_BOOKS, BOOK_REASON,
  CITY, ENERGY_PLACE, HATE_PLACE, WANT_PLACE,
  MICRO_Q1, MICRO_Q2, MICRO_Q3,
- APPEAL_TEXT) = range(19)
+ APPEAL_TEXT) = range(18)
 
 # ---------- Фильтры ----------
 FORBIDDEN_KEYWORDS = [
