@@ -5,22 +5,33 @@ from telegram.ext import (
     Application, CommandHandler, MessageHandler, CallbackQueryHandler,
     ConversationHandler, ContextTypes, filters, PreCheckoutQueryHandler
 )
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 BOT_USERNAME = "WeirdMeetBot"  # без @
 
-# ---------- Состояния (ЕДИНСТВЕННОЕ ОПРЕДЕЛЕНИЕ) ----------
-(CHOOSE_MODE, BIRTH_DATE, GENDER, PHONE_VERIFY, CITY_SELF,
- STRANGE_HABIT, FAVORITE_MEME, SECRET_ACTION,
- DISLIKED_BOOKS, BOOK_REASON,
- CITY, ENERGY_PLACE, HATE_PLACE, WANT_PLACE,
- MICRO_Q1, MICRO_Q2, MICRO_Q3,
- APPEAL_TEXT) = range(18)
+# Состояния (вручную, 18 переменных)
+CHOOSE_MODE   = 0
+BIRTH_DATE    = 1
+GENDER        = 2
+PHONE_VERIFY  = 3
+CITY_SELF     = 4
+STRANGE_HABIT = 5
+FAVORITE_MEME = 6
+SECRET_ACTION = 7
+DISLIKED_BOOKS = 8
+BOOK_REASON   = 9
+CITY          = 10
+ENERGY_PLACE  = 11
+HATE_PLACE    = 12
+WANT_PLACE    = 13
+MICRO_Q1      = 14
+MICRO_Q2      = 15
+MICRO_Q3      = 16
+APPEAL_TEXT   = 17
 
-# ---------- Фильтры ----------
+# Фильтры
 FORBIDDEN_KEYWORDS = [
     "убью", "взорвать", "теракт", "насилие", "оружие", "бомба",
     "нацист", "фашист", "свастика", "расизм", "наркотик", "спайс",
@@ -36,7 +47,7 @@ def is_safe_text(text):
 
 def has_terrorism(text): return any(w in text.lower() for w in TERRORISM_KEYWORDS)
 
-# ---------- База данных ----------
+# База данных
 def init_db():
     os.makedirs("/data", exist_ok=True)
     conn = sqlite3.connect("/data/dating_bot.db")
@@ -78,7 +89,7 @@ def init_db():
 
 init_db()
 
-# ---------- AI настройки ----------
+# AI настройки
 AI_START_RANGE = 200000
 MIN_PROFILES_PER_MODE = {"weird": 100, "books": 100, "city": 100, "micro": 100}
 
@@ -96,7 +107,7 @@ AI_ENERGY_PLACES = ["Парк Горького","Красная площадь"]
 AI_HATE_PLACES = ["Пробки на ТТК","Станция метро Выхино"]
 AI_WANT_PLACES = ["Смотровая площадка Москва-Сити","Эрмитаж"]
 
-# ---------- Служебные функции ----------
+# Служебные функции
 def count_active_profiles():
     conn = sqlite3.connect("/data/dating_bot.db")
     c = conn.cursor()
@@ -216,7 +227,7 @@ async def process_referral_bonus(user_id, context):
             except: pass
     conn.close()
 
-# ==================== AI-функции ====================
+# AI-функции
 def get_available_ai_name(mode, gender):
     conn = sqlite3.connect("/data/dating_bot.db")
     c = conn.cursor()
@@ -413,7 +424,7 @@ async def handle_ai_conversation(update: Update, context: ContextTypes.DEFAULT_T
     record_ai_message(user_id, ai_id, True, response)
     conn.close()
 
-# ==================== ОСНОВНЫЕ ОБРАБОТЧИКИ ====================
+# Основные обработчики
 async def start(update, context):
     user_id = update.effective_user.id
     args = context.args
@@ -464,7 +475,7 @@ def search_keyboard(user_id):
         [InlineKeyboardButton("⏹ Стоп", callback_data="stop_search")]
     ])
 
-# ---------- Регистрация ----------
+# Регистрация
 async def choose_mode(update, context):
     query = update.callback_query; await query.answer()
     if is_banned(query.from_user.id):
@@ -749,7 +760,7 @@ async def micro_q3(update, context):
     await query.edit_message_text("✅ Профиль создан! /search", reply_markup=main_keyboard())
     return ConversationHandler.END
 
-# ---------- Поиск ----------
+# Поиск
 def find_next_profile(user_id, mode, search_city=None):
     conn = sqlite3.connect("/data/dating_bot.db")
     c = conn.cursor()
@@ -868,7 +879,7 @@ async def stop_search(update, context):
     query = update.callback_query; await query.answer()
     await query.edit_message_text("Поиск остановлен.", reply_markup=main_keyboard())
 
-# ---------- Профиль, мэтчи, магазин, приглашения ----------
+# Профиль, мэтчи, магазин, приглашения
 async def show_profile(update, context):
     query = update.callback_query
     if query: await query.answer(); user_id = query.from_user.id
@@ -1140,7 +1151,7 @@ async def ai_button(update, context):
 async def cancel(update, context):
     await update.message.reply_text("❌ Отменено."); return ConversationHandler.END
 
-# ---------- ЗАПУСК ----------
+# Запуск
 def main():
     TOKEN = os.environ.get("BOT_TOKEN")
     if not TOKEN:
@@ -1148,11 +1159,9 @@ def main():
 
     app = Application.builder().token(TOKEN).build()
 
-    # Планировщик
-    scheduler = AsyncIOScheduler()
-    scheduler.add_job(manage_all_ai, 'interval', hours=1)
-    scheduler.add_job(lambda: ai_like_random_users(app), 'interval', hours=1)
-    scheduler.start()
+    # Планировщик заменён на встроенный JobQueue
+    app.job_queue.run_repeating(lambda ctx: manage_all_ai(), interval=3600, first=0)
+    app.job_queue.run_repeating(lambda ctx: asyncio.ensure_future(ai_like_random_users(app)), interval=3600, first=30)
 
     # ConversationHandler регистрации
     conv_handler = ConversationHandler(
@@ -1219,7 +1228,6 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_ai_conversation), group=1)
 
     # Запуск
-    manage_all_ai()
     print("🤖 Бот запущен!")
     app.run_polling(drop_pending_updates=True)
 
