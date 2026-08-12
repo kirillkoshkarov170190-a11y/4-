@@ -50,7 +50,11 @@ def has_terrorism(text): return any(w in text.lower() for w in TERRORISM_KEYWORD
 # База данных
 def init_db():
     os.makedirs("/data", exist_ok=True)
-    conn = sqlite3.connect("/data/dating_bot.db")
+    db_path = "/data/dating_bot.db"
+    # Если база уже существует, удаляем её для пересоздания (потеря старых данных, но сейчас это не критично)
+    if os.path.exists(db_path):
+        os.remove(db_path)
+    conn = sqlite3.connect(db_path)
     c = conn.cursor()
     c.execute("""CREATE TABLE IF NOT EXISTS users (
         user_id INTEGER PRIMARY KEY, username TEXT, first_name TEXT,
@@ -492,7 +496,8 @@ async def choose_mode(update, context):
     c.execute("SELECT mode FROM users WHERE user_id=?", (query.from_user.id,))
     if c.fetchone():
         conn.close()
-        await query.edit_message_text("У вас уже есть профиль! /search", reply_markup=main_keyboard())
+        # Отправляем новое сообщение вместо редактирования
+        await query.message.reply_text("У вас уже есть профиль! /search", reply_markup=main_keyboard())
         return ConversationHandler.END
     conn.close()
     await query.edit_message_text("🔞 Введите дату рождения ДД.ММ.ГГГГ:")
@@ -810,28 +815,43 @@ def find_next_profile(user_id, mode, search_city=None):
 
 async def search(update, context):
     user_id = update.effective_user.id
-    if is_banned(user_id): await update.message.reply_text("⛔ Вы заблокированы."); return
-    if not can_like(user_id): await update.message.reply_text("⚠️ Дневной лимит лайков исчерпан."); return
-    conn = sqlite3.connect("/data/dating_bot.db")
-    c = conn.cursor()
-    c.execute("SELECT mode, search_city FROM users WHERE user_id=?", (user_id,))
-    user = c.fetchone()
-    conn.close()
-    if not user: await update.message.reply_text("Сначала создайте профиль: /start"); return
-    mode, search_city = user
-    profile = find_next_profile(user_id, mode, search_city)
-    if not profile: await update.message.reply_text("😅 Нет анкет в вашем городе."); return
-    context.user_data["current_profile_id"] = profile[0]
-    if mode == "weird": text = f"🎭 АНКЕТА\nИмя: {profile[1]}\n🤪 Привычка: {profile[2]}\n🔥 Мем: {profile[3]}\n🤫 Секрет: {profile[4]}"
-    elif mode == "books": text = f"📚 АНКЕТА\nИмя: {profile[1]}\n📕 Книги: {profile[2]}\n💭 Причина: {profile[3]}"
-    elif mode == "city": text = f"🗺 АНКЕТА\nИмя: {profile[1]}\nГород: {profile[2]}\n⚡: {profile[3]}\n😤: {profile[4]}\n🌟: {profile[5]}"
-    else:
-        answers = {"morning":"🌅 Утро","evening":"🌙 Вечер","coffee":"☕ Кофе","tea":"🍵 Чай","mountains":"🏔 Горы","sea":"🌊 Море"}
-        text = f"❓ АНКЕТА\nИмя: {profile[1]}\n• {answers.get(profile[2], profile[2])}\n• {answers.get(profile[3], profile[3])}\n• {answers.get(profile[4], profile[4])}"
-    if profile[0] >= AI_START_RANGE:
-        await update.message.reply_text(f"🤖 {text}", reply_markup=search_keyboard(profile[0]))
-    else:
-        await update.message.reply_text(text, reply_markup=search_keyboard(profile[0]))
+    await update.message.reply_text("🔎 Ищу анкеты...")
+    try:
+        if is_banned(user_id):
+            await update.message.reply_text("⛔ Вы заблокированы.")
+            return
+        if not can_like(user_id):
+            await update.message.reply_text("⚠️ Дневной лимит лайков исчерпан.")
+            return
+        conn = sqlite3.connect("/data/dating_bot.db")
+        c = conn.cursor()
+        c.execute("SELECT mode, search_city FROM users WHERE user_id=?", (user_id,))
+        user = c.fetchone()
+        conn.close()
+        if not user:
+            await update.message.reply_text("Сначала создайте профиль: /start")
+            return
+        mode, search_city = user
+        profile = find_next_profile(user_id, mode, search_city)
+        if not profile:
+            await update.message.reply_text("😅 Нет анкет в вашем городе.")
+            return
+        context.user_data["current_profile_id"] = profile[0]
+        if mode == "weird":
+            text = f"🎭 АНКЕТА\nИмя: {profile[1]}\n🤪 Привычка: {profile[2]}\n🔥 Мем: {profile[3]}\n🤫 Секрет: {profile[4]}"
+        elif mode == "books":
+            text = f"📚 АНКЕТА\nИмя: {profile[1]}\n📕 Книги: {profile[2]}\n💭 Причина: {profile[3]}"
+        elif mode == "city":
+            text = f"🗺 АНКЕТА\nИмя: {profile[1]}\nГород: {profile[2]}\n⚡: {profile[3]}\n😤: {profile[4]}\n🌟: {profile[5]}"
+        else:
+            answers = {"morning":"🌅 Утро","evening":"🌙 Вечер","coffee":"☕ Кофе","tea":"🍵 Чай","mountains":"🏔 Горы","sea":"🌊 Море"}
+            text = f"❓ АНКЕТА\nИмя: {profile[1]}\n• {answers.get(profile[2], profile[2])}\n• {answers.get(profile[3], profile[3])}\n• {answers.get(profile[4], profile[4])}"
+        if profile[0] >= AI_START_RANGE:
+            await update.message.reply_text(f"🤖 {text}", reply_markup=search_keyboard(profile[0]))
+        else:
+            await update.message.reply_text(text, reply_markup=search_keyboard(profile[0]))
+    except Exception as e:
+        await update.message.reply_text(f"❌ Ошибка при поиске: {e}")
 
 async def handle_like(update, context):
     query = update.callback_query; await query.answer()
