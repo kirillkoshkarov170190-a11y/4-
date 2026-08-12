@@ -72,11 +72,6 @@ def init_db():
     c.execute("""CREATE TABLE IF NOT EXISTS message_log (
         id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, chat_id INTEGER,
         message_text TEXT, filter_triggered INTEGER, filter_reason TEXT, timestamp TEXT)""")
-    # Автоматическое добавление колонки chat_id, если её ещё нет
-    try:
-        c.execute("ALTER TABLE message_log ADD COLUMN chat_id INTEGER DEFAULT 0")
-    except sqlite3.OperationalError:
-        pass
     c.execute("CREATE TABLE IF NOT EXISTS active_packs (user_id INTEGER, pack_name TEXT, expiry TEXT, uses_left INTEGER, PRIMARY KEY(user_id, pack_name))")
     c.execute("""CREATE TABLE IF NOT EXISTS referrals (referrer_id INTEGER, referred_id INTEGER PRIMARY KEY, date TEXT, bonus_given INTEGER DEFAULT 0)""")
     c.execute("""CREATE TABLE IF NOT EXISTS ai_profiles (
@@ -410,7 +405,6 @@ async def handle_ai_conversation(update: Update, context: ContextTypes.DEFAULT_T
     if not msg or not msg.text:
         return
     user_id = msg.from_user.id
-    # Не обрабатываем, если пользователь в процессе регистрации
     if context.user_data and context.user_data.get("mode"):
         return
 
@@ -532,7 +526,6 @@ async def choose_gender(update, context):
     await query.answer()
     context.user_data["gender"] = query.data.split("_")[1]
     keyboard = [[KeyboardButton("📱 Отправить номер телефона", request_contact=True)]]
-    # Отправляем новое сообщение с reply-клавиатурой
     await query.message.reply_text(
         "Для завершения регистрации подтвердите номер телефона.\nНажмите кнопку ниже.",
         reply_markup=ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
@@ -542,7 +535,7 @@ async def choose_gender(update, context):
 async def get_phone(update, context):
     contact = update.message.contact
     if not contact:
-        await update.message.reply_text("Пожалуйста, используйте кнопку.")
+        await update.message.reply_text("Пожалуйста, используйте кнопку «Отправить номер телефона».")
         return PHONE_VERIFY
     context.user_data["phone_hash"] = hashlib.sha256(contact.phone_number.encode()).hexdigest()
     await update.message.reply_text("✅ Номер подтверждён! Теперь укажите ваш город (например, Москва):", reply_markup=ReplyKeyboardRemove())
@@ -553,6 +546,9 @@ async def get_city_self(update, context):
     if not city:
         await update.message.reply_text("Введите название города.")
         return CITY_SELF
+    if len(city) > 50:
+        city = city[:50]
+        await update.message.reply_text(f"Название города слишком длинное, я сократил до: {city}")
     context.user_data["city"] = city
     context.user_data["search_city"] = city
     await update.message.reply_text(f"🏙 Город {city} сохранён!")
@@ -565,14 +561,14 @@ async def redirect_to_mode(source, context):
         msg_func = source.edit_message_text
     mode = context.user_data.get("mode")
     if mode == "weird":
-        await msg_func("🎭 АНТИ‑ТИНДЕР\nВопрос 1/3: Самая странная привычка?")
+        await msg_func("🎭 АНТИ‑ТИНДЕР\nВопрос 1/3: Самая странная привычка? (максимум 200 символов)")
         return STRANGE_HABIT
     elif mode == "books":
-        await msg_func("📚 КНИЖНЫЙ КЛУБ\nНазови 1-2 книги, которые разочаровали:")
+        await msg_func("📚 КНИЖНЫЙ КЛУБ\nНазови 1-2 книги, которые разочаровали: (максимум 200 символов)")
         return DISLIKED_BOOKS
     elif mode == "city":
-        await msg_func("🗺 В каком городе живёте?")
-        return CITY
+        await msg_func("Место, где заряжаетесь энергией? (максимум 200 символов)")
+        return ENERGY_PLACE
     elif mode == "micro":
         await msg_func("❓ МИКРО‑ДИАЛОГИ\nВопрос 1/3: Утро или вечер?", reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("🌅 Утро", callback_data="morning"), InlineKeyboardButton("🌙 Вечер", callback_data="evening")]
@@ -584,6 +580,9 @@ async def redirect_to_mode(source, context):
 
 async def get_strange_habit(update, context):
     text = update.message.text.strip()
+    if len(text) > 200:
+        text = text[:200]
+        await update.message.reply_text("Ваш ответ слишком длинный, я сократил его до 200 символов. Продолжаем 🙂")
     safe, words = is_safe_text(text)
     log_message(update.effective_user.id, update.effective_chat.id, text, not safe, ", ".join(words))
     if not safe:
@@ -591,7 +590,7 @@ async def get_strange_habit(update, context):
         if has_terrorism(text) and admin: await context.bot.send_message(admin, f"🚨 Терроризм от {update.effective_user.id}:\n{text[:200]}")
         await update.message.reply_text("❌ Запрещённые слова."); return STRANGE_HABIT
     context.user_data["strange_habit"] = text
-    await update.message.reply_text("🔥 Любимый мем?")
+    await update.message.reply_text("🔥 Любимый мем? (максимум 200 символов)")
     return FAVORITE_MEME
 
 async def get_admin_id():
@@ -600,6 +599,9 @@ async def get_admin_id():
 
 async def get_favorite_meme(update, context):
     text = update.message.text.strip()
+    if len(text) > 200:
+        text = text[:200]
+        await update.message.reply_text("Ваш ответ слишком длинный, я сократил его до 200 символов. Продолжаем 🙂")
     safe, words = is_safe_text(text)
     log_message(update.effective_user.id, update.effective_chat.id, text, not safe, ", ".join(words))
     if not safe:
@@ -607,11 +609,14 @@ async def get_favorite_meme(update, context):
         if has_terrorism(text) and admin: await context.bot.send_message(admin, f"🚨 Терроризм от {update.effective_user.id}:\n{text[:200]}")
         await update.message.reply_text("❌ Недопустимый мем."); return FAVORITE_MEME
     context.user_data["favorite_meme"] = text
-    await update.message.reply_text("🤫 Что делаете, когда никто не видит?")
+    await update.message.reply_text("🤫 Что делаете, когда никто не видит? (максимум 200 символов)")
     return SECRET_ACTION
 
 async def get_secret_action(update, context):
     text = update.message.text.strip()
+    if len(text) > 200:
+        text = text[:200]
+        await update.message.reply_text("Ваш ответ слишком длинный, я сократил его до 200 символов. Продолжаем 🙂")
     safe, words = is_safe_text(text)
     log_message(update.effective_user.id, update.effective_chat.id, text, not safe, ", ".join(words))
     if not safe:
@@ -639,6 +644,9 @@ async def get_secret_action(update, context):
 
 async def get_disliked_books(update, context):
     text = update.message.text.strip()
+    if len(text) > 200:
+        text = text[:200]
+        await update.message.reply_text("Ваш ответ слишком длинный, я сократил его до 200 символов. Продолжаем 🙂")
     safe, words = is_safe_text(text)
     log_message(update.effective_user.id, update.effective_chat.id, text, not safe, ", ".join(words))
     if not safe:
@@ -646,11 +654,14 @@ async def get_disliked_books(update, context):
         if has_terrorism(text) and admin: await context.bot.send_message(admin, f"🚨 Терроризм от {update.effective_user.id}:\n{text[:200]}")
         await update.message.reply_text("❌ Запрещённое содержание."); return DISLIKED_BOOKS
     context.user_data["disliked_books"] = text
-    await update.message.reply_text("Почему разочаровали?")
+    await update.message.reply_text("Почему разочаровали? (максимум 200 символов)")
     return BOOK_REASON
 
 async def get_book_reason(update, context):
     text = update.message.text.strip()
+    if len(text) > 200:
+        text = text[:200]
+        await update.message.reply_text("Ваш ответ слишком длинный, я сократил его до 200 символов. Продолжаем 🙂")
     safe, words = is_safe_text(text)
     log_message(update.effective_user.id, update.effective_chat.id, text, not safe, ", ".join(words))
     if not safe:
@@ -676,19 +687,13 @@ async def get_book_reason(update, context):
     return ConversationHandler.END
 
 async def get_city(update, context):
-    text = update.message.text.strip()
-    safe, words = is_safe_text(text)
-    log_message(update.effective_user.id, update.effective_chat.id, text, not safe, ", ".join(words))
-    if not safe:
-        admin = await get_admin_id()
-        if has_terrorism(text) and admin: await context.bot.send_message(admin, f"🚨 Терроризм от {update.effective_user.id}:\n{text[:200]}")
-        await update.message.reply_text("❌ Запрещённый город."); return CITY
-    context.user_data["city"] = text
-    await update.message.reply_text("Место, где заряжаетесь энергией?")
-    return ENERGY_PLACE
+    await update.message.reply_text("Пожалуйста, используйте кнопки."); return CITY
 
 async def get_energy_place(update, context):
     text = update.message.text.strip()
+    if len(text) > 200:
+        text = text[:200]
+        await update.message.reply_text("Ваш ответ слишком длинный, я сократил его до 200 символов. Продолжаем 🙂")
     safe, words = is_safe_text(text)
     log_message(update.effective_user.id, update.effective_chat.id, text, not safe, ", ".join(words))
     if not safe:
@@ -696,11 +701,14 @@ async def get_energy_place(update, context):
         if has_terrorism(text) and admin: await context.bot.send_message(admin, f"🚨 Терроризм от {update.effective_user.id}:\n{text[:200]}")
         await update.message.reply_text("❌ Нельзя."); return ENERGY_PLACE
     context.user_data["energy_place"] = text
-    await update.message.reply_text("Место, которое бесит?")
+    await update.message.reply_text("Место, которое бесит? (максимум 200 символов)")
     return HATE_PLACE
 
 async def get_hate_place(update, context):
     text = update.message.text.strip()
+    if len(text) > 200:
+        text = text[:200]
+        await update.message.reply_text("Ваш ответ слишком длинный, я сократил его до 200 символов. Продолжаем 🙂")
     safe, words = is_safe_text(text)
     log_message(update.effective_user.id, update.effective_chat.id, text, not safe, ", ".join(words))
     if not safe:
@@ -708,11 +716,14 @@ async def get_hate_place(update, context):
         if has_terrorism(text) and admin: await context.bot.send_message(admin, f"🚨 Терроризм от {update.effective_user.id}:\n{text[:200]}")
         await update.message.reply_text("❌ Нельзя."); return HATE_PLACE
     context.user_data["hate_place"] = text
-    await update.message.reply_text("Куда хотите сходить?")
+    await update.message.reply_text("Куда хотите сходить? (максимум 200 символов)")
     return WANT_PLACE
 
 async def get_want_place(update, context):
     text = update.message.text.strip()
+    if len(text) > 200:
+        text = text[:200]
+        await update.message.reply_text("Ваш ответ слишком длинный, я сократил его до 200 символов. Продолжаем 🙂")
     safe, words = is_safe_text(text)
     log_message(update.effective_user.id, update.effective_chat.id, text, not safe, ", ".join(words))
     if not safe:
@@ -1243,18 +1254,9 @@ def main():
     # AI‑диалоги (не перехватывают регистрацию)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_ai_conversation), group=1)
 
-    # Запуск через webhook (обязателен на Amvera для стабильности)
-    service_name = os.environ.get("AMVERA_SERVICE_NAME", "dating-bot")
-    webhook_url = f"https://{service_name}.amvera.app/webhook"
-    port = int(os.environ.get("PORT", "8443"))
+    # Запуск через polling
+    app.run_polling(drop_pending_updates=True)
+    print("🤖 Бот запущен через polling")
 
-    app.run_webhook(
-        listen="0.0.0.0",
-        port=port,
-        webhook_url=webhook_url,
-        drop_pending_updates=True
-    )
-    print(f"🤖 Бот запущен через webhook: {webhook_url}")
-    
 if __name__ == "__main__":
     main()
