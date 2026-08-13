@@ -47,49 +47,48 @@ def is_safe_text(text):
 
 def has_terrorism(text): return any(w in text.lower() for w in TERRORISM_KEYWORDS)
 
-# База данных
+# База данных – пересоздаём все таблицы
 def init_db():
     os.makedirs("/data", exist_ok=True)
     db_path = "/data/dating_bot.db"
-    # Если база уже существует, удаляем её для пересоздания (потеря старых данных, но сейчас это не критично)
-    if os.path.exists(db_path):
-        os.remove(db_path)
     conn = sqlite3.connect(db_path)
     c = conn.cursor()
-    c.execute("""CREATE TABLE IF NOT EXISTS users (
+    # Удаляем все таблицы, чтобы гарантировать правильную структуру
+    tables = [
+        "users", "weird_profiles", "book_profiles", "city_profiles", "micro_profiles",
+        "likes", "matches", "banned_users", "complaints", "moderation_flags",
+        "appeals", "message_log", "active_packs", "referrals",
+        "ai_profiles", "ai_actions", "ai_conversations", "ai_daily_limit"
+    ]
+    for t in tables:
+        c.execute(f"DROP TABLE IF EXISTS {t}")
+    # Создаём таблицы заново
+    c.execute("""CREATE TABLE users (
         user_id INTEGER PRIMARY KEY, username TEXT, first_name TEXT,
         mode TEXT, birth_date TEXT, registered_at TEXT,
         coins INTEGER DEFAULT 0, subscription_type TEXT, subscription_expiry TEXT,
         likes_today INTEGER DEFAULT 0, last_like_date TEXT,
         gender TEXT DEFAULT '', phone_hash TEXT DEFAULT '',
         city TEXT DEFAULT '', search_city TEXT DEFAULT '')""")
-    c.execute("CREATE TABLE IF NOT EXISTS weird_profiles (user_id PRIMARY KEY, strange_habit TEXT, favorite_meme TEXT, secret_action TEXT)")
-    c.execute("CREATE TABLE IF NOT EXISTS book_profiles (user_id PRIMARY KEY, disliked_books TEXT, book_reason TEXT)")
-    c.execute("CREATE TABLE IF NOT EXISTS city_profiles (user_id PRIMARY KEY, city TEXT, energy_place TEXT, hate_place TEXT, want_place TEXT)")
-    c.execute("CREATE TABLE IF NOT EXISTS micro_profiles (user_id PRIMARY KEY, answer_1 TEXT, answer_2 TEXT, answer_3 TEXT)")
-    c.execute("CREATE TABLE IF NOT EXISTS likes (from_user INTEGER, to_user INTEGER, mode TEXT, timestamp TEXT, PRIMARY KEY(from_user, to_user, mode))")
-    c.execute("CREATE TABLE IF NOT EXISTS matches (user1 INTEGER, user2 INTEGER, mode TEXT, match_date TEXT, PRIMARY KEY(user1, user2, mode))")
-    c.execute("CREATE TABLE IF NOT EXISTS banned_users (user_id PRIMARY KEY, reason TEXT, banned_at TEXT)")
-    c.execute("CREATE TABLE IF NOT EXISTS complaints (id INTEGER PRIMARY KEY AUTOINCREMENT, from_user INTEGER, about_user INTEGER, created_at TEXT)")
-    c.execute("CREATE TABLE IF NOT EXISTS moderation_flags (user_id PRIMARY KEY, flag TEXT, details TEXT)")
-    c.execute("CREATE TABLE IF NOT EXISTS appeals (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, text TEXT, created_at TEXT)")
-    c.execute("""CREATE TABLE IF NOT EXISTS message_log (
+    c.execute("CREATE TABLE weird_profiles (user_id PRIMARY KEY, strange_habit TEXT, favorite_meme TEXT, secret_action TEXT)")
+    c.execute("CREATE TABLE book_profiles (user_id PRIMARY KEY, disliked_books TEXT, book_reason TEXT)")
+    c.execute("CREATE TABLE city_profiles (user_id PRIMARY KEY, city TEXT, energy_place TEXT, hate_place TEXT, want_place TEXT)")
+    c.execute("CREATE TABLE micro_profiles (user_id PRIMARY KEY, answer_1 TEXT, answer_2 TEXT, answer_3 TEXT)")
+    c.execute("CREATE TABLE likes (from_user INTEGER, to_user INTEGER, mode TEXT, timestamp TEXT, PRIMARY KEY(from_user, to_user, mode))")
+    c.execute("CREATE TABLE matches (user1 INTEGER, user2 INTEGER, mode TEXT, match_date TEXT, PRIMARY KEY(user1, user2, mode))")
+    c.execute("CREATE TABLE banned_users (user_id PRIMARY KEY, reason TEXT, banned_at TEXT)")
+    c.execute("CREATE TABLE complaints (id INTEGER PRIMARY KEY AUTOINCREMENT, from_user INTEGER, about_user INTEGER, created_at TEXT)")
+    c.execute("CREATE TABLE moderation_flags (user_id PRIMARY KEY, flag TEXT, details TEXT)")
+    c.execute("CREATE TABLE appeals (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, text TEXT, created_at TEXT)")
+    c.execute("""CREATE TABLE message_log (
         id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, chat_id INTEGER,
         message_text TEXT, filter_triggered INTEGER, filter_reason TEXT, timestamp TEXT)""")
-    c.execute("CREATE TABLE IF NOT EXISTS active_packs (user_id INTEGER, pack_name TEXT, expiry TEXT, uses_left INTEGER, PRIMARY KEY(user_id, pack_name))")
-    c.execute("""CREATE TABLE IF NOT EXISTS referrals (referrer_id INTEGER, referred_id INTEGER PRIMARY KEY, date TEXT, bonus_given INTEGER DEFAULT 0)""")
-    c.execute("""CREATE TABLE IF NOT EXISTS ai_profiles (
-        user_id INTEGER PRIMARY KEY, mode TEXT, name TEXT,
-        active INTEGER DEFAULT 1, gender TEXT)""")
-    c.execute("""CREATE TABLE IF NOT EXISTS ai_actions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, actor_id INTEGER, target_id INTEGER,
-        action TEXT, timestamp TEXT)""")
-    c.execute("""CREATE TABLE IF NOT EXISTS ai_conversations (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, ai_id INTEGER,
-        message_text TEXT, from_ai INTEGER DEFAULT 0, timestamp TEXT)""")
-    c.execute("""CREATE TABLE IF NOT EXISTS ai_daily_limit (
-        user_id INTEGER, ai_id INTEGER, date TEXT, msg_count INTEGER DEFAULT 0,
-        PRIMARY KEY (user_id, ai_id, date))""")
+    c.execute("CREATE TABLE active_packs (user_id INTEGER, pack_name TEXT, expiry TEXT, uses_left INTEGER, PRIMARY KEY(user_id, pack_name))")
+    c.execute("CREATE TABLE referrals (referrer_id INTEGER, referred_id INTEGER PRIMARY KEY, date TEXT, bonus_given INTEGER DEFAULT 0)")
+    c.execute("CREATE TABLE ai_profiles (user_id INTEGER PRIMARY KEY, mode TEXT, name TEXT, active INTEGER DEFAULT 1, gender TEXT)")
+    c.execute("CREATE TABLE ai_actions (id INTEGER PRIMARY KEY AUTOINCREMENT, actor_id INTEGER, target_id INTEGER, action TEXT, timestamp TEXT)")
+    c.execute("CREATE TABLE ai_conversations (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, ai_id INTEGER, message_text TEXT, from_ai INTEGER DEFAULT 0, timestamp TEXT)")
+    c.execute("CREATE TABLE ai_daily_limit (user_id INTEGER, ai_id INTEGER, date TEXT, msg_count INTEGER DEFAULT 0, PRIMARY KEY (user_id, ai_id, date))")
     conn.commit()
     conn.close()
 
@@ -496,7 +495,6 @@ async def choose_mode(update, context):
     c.execute("SELECT mode FROM users WHERE user_id=?", (query.from_user.id,))
     if c.fetchone():
         conn.close()
-        # Отправляем новое сообщение вместо редактирования
         await query.message.reply_text("У вас уже есть профиль! /search", reply_markup=main_keyboard())
         return ConversationHandler.END
     conn.close()
